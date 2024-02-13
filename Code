@@ -1,0 +1,755 @@
+ALL THE SCRIPTS TO BUILD CHESS:
+
+
+Board Tracker Script:
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class BoardTracker : MonoBehaviour {
+    //Creating vvariable for board
+	public static GameObject[,] Board;
+	public GameObject boardObject;
+	public int currentsquare = 0;
+
+	// Use this for initialization
+	void Start (){
+        //Filling board array with appropriate values
+		Board = new GameObject[8, 8];
+		for (int i = 0; i < 8; i++)
+		{
+			for (int j = 0; j < 8; j++)
+			{
+				Board [i, j] = transform.GetChild (currentsquare).gameObject;
+				currentsquare++;
+
+			
+			}
+
+
+		}
+
+	}
+	
+	// Update is called once per frame
+	void Update ()
+	{
+	}
+
+	public static void ResetSquareColors () {
+		foreach (GameObject square in Board) {
+		//CLEARING THE BOARDS COLORS
+			square.GetComponent<MoveSelection> ().possiblemove = false;
+            square.GetComponent<MoveSelection> ().possibleCapture = false;
+            square.GetComponent<MoveSelection> ().possibleEnPassent = false;
+            square.GetComponent<MoveSelection>().possibleCastle = false;
+			square.GetComponent<MeshRenderer> ().material = square.GetComponent<MoveSelection> ().DefaultMaterial;
+			
+		}
+
+	
+	}
+		
+}
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Move Selection Script:
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class MoveSelection : MonoBehaviour {
+	public bool possiblemove;
+	public Material PossibleMoveColor;
+	public Material DefaultMaterial;
+    public int[] location;
+    //Castling
+    public bool possibleCastle;
+    //Pawn Promotion
+    public bool possiblePromotion;
+    //Enpassent
+    public bool possibleEnPassent;
+    public int EnPassentDirection;
+    public int EnPassentRow;
+    //make diff color for kill piece.
+    public bool possibleCapture;
+    public Material possibleCaptureColor;
+	// Use this for initialization
+	void Start () {
+	}
+	
+	// Update is called once per frame
+	void Update () {
+		if (possiblemove || possibleCastle) {
+            //Setting colors on board to possible locations pieces can move to
+			this.GetComponent<MeshRenderer> ().material = PossibleMoveColor;
+			}
+			else if (possibleCapture || possibleEnPassent) {
+                this.GetComponent<MeshRenderer>().material  = possibleCaptureColor;
+            }
+        }
+
+
+
+        void OnMouseDown () {
+
+            if (possiblemove || possibleCapture || possibleEnPassent  || possibleCastle || possiblePromotion) {
+            //All possible options with pieces and saving their new locations.
+            if (possibleCapture)  {
+                CapturedTracker.capturePiece(PieceTracker.pieces[location[0], location[1]]);
+            } else if (possibleEnPassent) {
+                CapturedTracker.capturePiece(PieceTracker.pieces[location[0], EnPassentRow]);
+            } else if (possibleCastle) {
+                if (location[0] == 2) {
+                    MovePiece(PieceTracker.pieces[0, location[1]], new int[2]{location[0] + 1, location[1]});
+                } else if (location[0] == 6) {
+                    MovePiece(PieceTracker.pieces[7, location[1]], new int[2]{location[0] - 1, location[1]});
+                }
+            }
+
+            GameObject currentlySelectedPiece = PieceTracker.pieces[PieceTracker.currentlyselectedpieceLocation[0], PieceTracker.currentlyselectedpieceLocation[1]];
+            MovePiece (currentlySelectedPiece, location);
+            //Reset squares
+            BoardTracker.ResetSquareColors();
+
+            TurnTracker.ChangeTurn();
+            }
+        }
+    void MovePiece (GameObject movingPieces, int[] finalLocation) {
+            //Moving pieces and saving their locations
+            PieceTracker.pieces[movingPieces.GetComponent<PieceInfo>().location[0], movingPieces.GetComponent<PieceInfo>().location[1]] = null;
+
+            movingPieces.GetComponent<PieceInfo>().location = finalLocation;
+
+            PieceTracker.pieces[finalLocation[0], finalLocation[1]] = movingPieces;
+
+            BoardTracker.Board[finalLocation[0], finalLocation[1]].GetComponent<PhysicalPieceMover>().movingPiece = PieceTracker.pieces[finalLocation[0], finalLocation[1]];
+
+            PieceTracker.lastMovedPieceLocation = location;
+
+            PieceTracker.pieces[finalLocation[0], finalLocation[1]].GetComponent<PieceInfo>().timesMoved++;
+
+            if (PieceTracker.pieces[finalLocation[0], finalLocation[1]].GetComponent<PieceInfo>().Types == "Pawn") {
+                PieceTracker.pieces[finalLocation[0], finalLocation[1]].GetComponent<PawnPromotion>().CheckForPromotion();
+            }
+    }
+}
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Captured Pieces Tracker:
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class CapturedTracker : MonoBehaviour {
+    //Creating variables for captured pieces and where they will be
+     public static GameObject[,] capturedPiece = new GameObject [2, 15];
+     public static GameObject[,] capturedPieceSquares = new GameObject [2, 15];
+     public int storedColor;
+
+	// Use this for initialization
+	void Start () {
+        //Appropriatly filling arrays
+		for (int i = 0; i < 15; i++) {
+            capturedPieceSquares[storedColor, i] = transform.GetChild(i).gameObject;
+        }
+	}
+
+	// Update is called once per frame
+	void Update () {
+	}
+
+	public static void capturePiece (GameObject piece) {
+        //Checking if white piece or black piece being captured
+        int pieceColor = 1;
+        if(piece.GetComponent<PieceInfo>().IsWhite) {
+            pieceColor = 0;
+        }
+        //Disabling the scripts of the captured pieces
+       Component[] scripts = piece.GetComponents(typeof(MonoBehaviour));
+       foreach(MonoBehaviour script in scripts) {
+        if (script != piece.GetComponent<PieceInfo>() && script != piece.GetComponent<PieceColour>()) {
+            script.enabled = false;
+        }
+    }
+        piece.GetComponent<ClickedPiece>().enabled = false;
+        piece.GetComponent<Movement>().enabled = false;
+
+        PieceTracker.pieces[piece.GetComponent<PieceInfo>().location[0], piece.GetComponent<PieceInfo>().location[1]] = null;
+
+
+        //Setting the area of the captured pieces location
+        for (int i = 0; i <15; i++) {
+            if (capturedPiece[pieceColor, i] == null) {
+                capturedPiece[pieceColor, i] = piece;
+
+                capturedPieceSquares[pieceColor, i].GetComponent<PhysicalPieceMover>().movingPiece = piece;
+
+                break;
+            }
+        }
+    }
+}
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Clicked Piece:
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class ClickedPiece : MonoBehaviour {
+
+	// Use this for initialization
+	void Start () {
+		
+	}
+	
+	// Update is called once per frame
+	void Update () {
+	}
+	void OnMouseDown() {
+        //This is what runs when you move your piece, saves new location and stuff
+        if (PieceTracker.currentlyselectedpieceLocation[0] != this.GetComponent<PieceInfo>().location[0] || PieceTracker.currentlyselectedpieceLocation[1] != this.GetComponent<PieceInfo>().location[1]){
+		PieceTracker.currentlyselectedpieceLocation [0] = this.GetComponent<PieceInfo> ().location [0];
+		PieceTracker.currentlyselectedpieceLocation [1] = this.GetComponent<PieceInfo> ().location [1];
+        }
+		BoardTracker.ResetSquareColors ();
+	
+	}
+}
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Movement:
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using System;
+
+public class Movement : MonoBehaviour {
+    public int[] offsets;
+    public int range;
+    public bool canJumpOverPieces;
+	// Use this for initialization
+	void Start () {
+		
+	}
+	
+	// Update is called once per frame
+	void Update () {
+ 		if(this.GetComponent<PieceInfo>().location[0] == PieceTracker.currentlyselectedpieceLocation[0] && this.GetComponent<PieceInfo>().location[1] == PieceTracker.currentlyselectedpieceLocation[1]){
+            //If pawn do these commands
+            if(this.GetComponent<PieceInfo>().Types == "Pawn")  {
+                pawnMovement();
+                //Else do movement with normal pieces that have offsets and a range, the pieces that move in four directions
+            } else {
+            moveIn4Directions(offsets);
+            int[] inverseOffsets = new int [2] {offsets[1], offsets[0]};
+            moveIn4Directions(inverseOffsets);
+            } //Can only castle if you are a King.
+            if (this.GetComponent<PieceInfo>().Types == "King") {
+                castling();
+            }
+        }
+	}
+
+	void pawnMovement ()  {
+        //Pawn offsets and directions if black pawn or white pawn
+        int[] pawnOffsets = new int [2]{0, 1};
+        int[] pawnDirections = new int [2];
+        if (this.GetComponent<PieceInfo>().IsWhite) pawnDirections[1] = 1;
+        else pawnDirections[1] = -1;
+        int pawnRange;
+        if(this.GetComponent<PieceInfo>().timesMoved == 0) pawnRange = 2;
+        else pawnRange = 1;
+        basicMovement(pawnOffsets, pawnDirections, pawnRange);
+        pawnCapturing(pawnDirections[1]);
+    }
+
+
+	void moveIn4Directions (int[] offsets) {
+        //movement for all pieces except pawn
+        for (int verticalDirection = -1; verticalDirection <= 1; verticalDirection += 2){
+            for(int horizontalDirection = -1; horizontalDirection <= 1; horizontalDirection += 2){
+                basicMovement (offsets, new int[2] {verticalDirection, horizontalDirection}, range);
+
+
+            }
+        }
+    }
+
+    void basicMovement(int[] offsets, int[] directions, int pieceRange) {
+        //Basic Movement that every piece has
+        int[] possibleLocation = new int[2];
+        bool pieceInTheWay = false;
+        for (int i = 1; i <= pieceRange; i++) {
+            possibleLocation [0] = this.GetComponent<PieceInfo>().location [0] + ((offsets[0] * directions[0]) * i);
+            possibleLocation [1] = this.GetComponent<PieceInfo>().location [1] + ((offsets[1] * directions[1]) * i);
+                if (!pieceInTheWay || canJumpOverPieces) {
+                try {
+                    if (PieceTracker.pieces[possibleLocation[0], possibleLocation[1]]  == null) {
+                        BoardTracker.Board[possibleLocation[0], possibleLocation[1]].GetComponent<MoveSelection>().possiblemove = true;
+                    } else {
+                        if (PieceTracker.pieces [possibleLocation[0], possibleLocation[1]].GetComponent<PieceInfo>().IsWhite != this.GetComponent<PieceInfo>().IsWhite && this.GetComponent<PieceInfo>().Types !=  "Pawn") {
+                            BoardTracker.Board[possibleLocation[0], possibleLocation[1]].GetComponent<MoveSelection>().possibleCapture = true;
+                        }
+                    pieceInTheWay = true;
+                    }
+                }
+            catch {
+            }
+        }
+    }
+}
+
+
+    void pawnCapturing(int verticalDirection) {
+        int[] possibleLocation = new int[2];
+        int[] possibleEnPassentLocation = new int[2];
+        int correctRow;
+
+        //Pawn Capturing :D
+            for(int horizontalDirection = -1; horizontalDirection <= 1; horizontalDirection += 2) {
+                possibleLocation[0] = this.GetComponent<PieceInfo>().location[0] + (1 * horizontalDirection);
+                possibleLocation[1] = this.GetComponent<PieceInfo>().location[1] + (1 * verticalDirection);
+                    try {
+                    //Diagonal Pawn Capture
+                        if (PieceTracker.pieces[possibleLocation[0],possibleLocation[1]].GetComponent<PieceInfo>().IsWhite != this.GetComponent<PieceInfo>().IsWhite) {
+                            BoardTracker.Board[possibleLocation[0],possibleLocation[1]].GetComponent<MoveSelection>().possibleCapture = true;
+                }
+            }
+            catch {
+
+            }
+            //EnPassent
+                possibleEnPassentLocation[0] = possibleLocation[0];
+                possibleEnPassentLocation[1] = this.GetComponent<PieceInfo>().location[1];
+
+            try {
+                if(this.GetComponent<PieceInfo>().IsWhite) correctRow = 4;
+                else correctRow = 3;
+                bool pieceIsPawn = PieceTracker.pieces[possibleEnPassentLocation[0], possibleEnPassentLocation[1]].GetComponent<PieceInfo>().Types == "Pawn";
+                bool pieceIsDiffColor = PieceTracker.pieces[possibleEnPassentLocation[0], possibleEnPassentLocation[1]].GetComponent<PieceInfo>().IsWhite != this.GetComponent<PieceInfo>().IsWhite;
+                bool pieceMovedOnce = PieceTracker.pieces[possibleEnPassentLocation[0], possibleEnPassentLocation[1]].GetComponent<PieceInfo>().timesMoved == 1;
+                bool pieceLastMoved = possibleEnPassentLocation[0] == PieceTracker.lastMovedPieceLocation[0] && possibleEnPassentLocation[1] == PieceTracker.lastMovedPieceLocation[1];
+                bool pieceInCorrectRow = possibleEnPassentLocation[1] == correctRow;
+
+                if(pieceIsPawn && pieceIsDiffColor && pieceLastMoved && pieceInCorrectRow && pieceMovedOnce) {
+                    BoardTracker.Board[possibleLocation[0], possibleLocation[1]].GetComponent<MoveSelection>().possibleEnPassent = true;
+                    BoardTracker.Board[possibleLocation[0], possibleLocation[1]].GetComponent<MoveSelection>().EnPassentRow = possibleEnPassentLocation[1];
+                }
+            }
+            catch {
+
+            }
+        }
+    }
+
+    void castling () {
+        //Setting castling as available if the king and rooks havent moved yet
+        bool KingSideCastle;
+        bool QueenSideCastle;
+        if (this.GetComponent<PieceInfo>().timesMoved == 0) {
+            KingSideCastle = true;
+            QueenSideCastle = true;
+
+            if (PieceTracker.pieces[0, this.GetComponent<PieceInfo>().location[1]] == null)  {
+                QueenSideCastle = false;
+            } else {
+            QueenSideCastle = PieceTracker.pieces[0, this.GetComponent<PieceInfo>().location[1]].GetComponent<PieceInfo>().timesMoved == 0;
+            }
+            for (int i = 1; i <= 3; i++) {
+                if (PieceTracker.pieces[i, this.GetComponent<PieceInfo>().location[1]] != null) {
+                    QueenSideCastle = false;
+                }
+            }
+            if (PieceTracker.pieces[7, this.GetComponent<PieceInfo>().location[1]] == null){
+                KingSideCastle = false;
+            }  else {
+            KingSideCastle = PieceTracker.pieces[7, this.GetComponent<PieceInfo>().location[1]].GetComponent<PieceInfo>().timesMoved == 0;
+            }
+            for (int i = 5; i <= 6; i++) {
+                if (PieceTracker.pieces[i, this.GetComponent<PieceInfo>().location[1]] != null) {
+                    KingSideCastle = false;
+                }
+            }
+            //Where the rook and King will move depending on which side the person chooses to castle.
+
+            if (QueenSideCastle) {
+                BoardTracker.Board[2, this.GetComponent<PieceInfo>().location[1]].GetComponent<MoveSelection>().possibleCastle = true;
+            }
+            if (KingSideCastle) {
+                BoardTracker.Board[6, this.GetComponent<PieceInfo>().location[1]].GetComponent<MoveSelection>().possibleCastle = true;
+            }
+        }
+    }
+}
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Pawn Promotion:
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PawnPromotion : MonoBehaviour {
+
+    public GameObject[] possiblePromotions;
+
+	// Use this for initialization
+	void Start () {
+// 		buttonController = GameObject.Find("ButtonController");
+	}
+	
+	// Update is called once per frame
+	void Update () {
+		
+	}
+
+	public void CheckForPromotion() {
+        //Check if pawn is at end of board and if it is, display the menu with the appropriate colors.
+        if ((this.GetComponent<PieceInfo>().location[1] == 0) || (this.GetComponent<PieceInfo>().location[1] == 7)) {
+            PromotionMenu.ShowMenu(this.GetComponent<PieceInfo>().location);
+        }
+    }
+    public void PromoteToPiece(int type) {
+        GameObject newPiece = Instantiate(possiblePromotions[type], this.transform.position, this.transform.rotation);
+        //Give the piece that has spawned a location and the amount of times it has moved.
+        newPiece.GetComponent<PieceInfo>().location = this.GetComponent<PieceInfo>().location;
+        newPiece.GetComponent<PieceInfo>().timesMoved = this.GetComponent<PieceInfo>().timesMoved;
+        newPiece.GetComponent<PieceInfo>().IsWhite = this.GetComponent<PieceInfo>().IsWhite;
+
+        //Get the colliders for the newly spawned piece to be the same as the pawn that we destroy
+
+        newPiece.GetComponent<PieceColour>().ColorchangeCool();
+
+//         newPiece.GetComponent<BoxCollider>().enabled = this.GetComponent<BoxCollider>().enabled;
+//         newPiece.GetComponent<CapsuleCollider>().enabled = this.GetComponent<CapsuleCollider>().enabled;
+
+        newPiece.GetComponent<BoxCollider>().enabled = false;
+        newPiece.GetComponent<CapsuleCollider>().enabled = false;
+
+        PieceTracker.pieces[this.GetComponent<PieceInfo>().location[0], this.GetComponent<PieceInfo>().location[1]] = newPiece;
+
+        Destroy(gameObject);
+    }
+}
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Physical Piece Movement (Animations):
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PhysicalPieceMover : MonoBehaviour {
+    public GameObject movingPiece;
+    public Vector3 positionForPiece;
+	// Use this for initialization
+	void Start () {
+		positionForPiece = new Vector3(this.gameObject.transform.position.x, this.transform.position.y  + (this.gameObject.transform.localScale.y/2), this.gameObject.transform.position.z);
+	}
+	
+	// Update is called once per frame
+	void Update () {
+		if (movingPiece != null) {
+            float stepDistance = Time.deltaTime*  4.0f;
+                //Physically moving the pieces, like the way it moves on the board.
+            if (Vector3.Distance(positionForPiece, movingPiece.transform.position) > 1) stepDistance  *= Vector3.Distance(positionForPiece, movingPiece.transform.position);
+
+            movingPiece.transform.position = (Vector3.MoveTowards(movingPiece.transform.position, positionForPiece, stepDistance));
+
+            Vector3 positionForPieceMin = new Vector3(positionForPiece.x - 0.05f, positionForPiece.y, positionForPiece.z - 0.05f);
+            Vector3 positionForPieceMax = new Vector3(positionForPiece.x + 0.05f, positionForPiece.y, positionForPiece.z + 0.05f);
+
+
+            bool MovingPieceInXForPiece = movingPiece.transform.position.x > positionForPieceMin.x && movingPiece.transform.position.x < positionForPieceMax.x;
+            bool MovingPieceInZForPiece = movingPiece.transform.position.z > positionForPieceMin.z && movingPiece.transform.position.z < positionForPieceMax.z;
+
+
+        //Make the movingPiece NULL so errors dont happen
+            if(MovingPieceInXForPiece && MovingPieceInZForPiece) {
+                movingPiece = null;
+            }
+        }
+	}
+}
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+PieceColour:
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PieceColour : MonoBehaviour {
+	public Material black;
+	public Material white;
+// 	public bool IsWhite = true;
+	public GameObject myOriginalSquare;
+	public float BlackRotation = 180f;
+	public Quaternion Rotation;
+
+	// Use this for initialization
+	void Start () {
+//         IsWhite = myOriginalSquare.GetComponent<SpawnPiece>().GetOriginalPieceColour();
+        ColorchangeCool();
+
+	}
+
+
+		// Update is called once per frame
+	void Update () {
+	}
+
+
+	public void SetConnection(GameObject myParentSquare)
+	{
+		myOriginalSquare = myParentSquare;
+	}
+
+
+	public void SetColorToWhite(bool value){
+        //Sets colors to white
+		this.GetComponent<PieceInfo>().IsWhite = value;
+		MeshRenderer[] myChildren = this.GetComponentsInChildren<MeshRenderer> ();
+		foreach (MeshRenderer myRend in myChildren) {
+			if (this.GetComponent<PieceInfo>().IsWhite) {
+				myRend.material = white;
+			
+			} else {
+			
+				myRend.material = black;
+				this.GetComponent<PieceInfo> ().IsWhite = false;
+			}
+		
+		
+		}
+
+	}
+	public void ColorchangeCool () {
+        //Set the correct rotations for the pieces
+		Rotation = Quaternion.Euler (this.transform.rotation.x, this.transform.rotation.y + BlackRotation, this.transform.rotation.z);
+		//Get the material in component of type MeshRenderer of this instance of PieceColour and set it to white
+		MeshRenderer[] myChildren = this.GetComponentsInChildren<MeshRenderer> ();
+		foreach (MeshRenderer myRend in myChildren) {
+			if (this.GetComponent<PieceInfo>().IsWhite) {
+				myRend.material = white;
+                //Enabling Collider for White at beginning of game
+                this.GetComponent<CapsuleCollider>().enabled = true;
+                this.GetComponent<BoxCollider>().enabled = true;
+//                 this.GetComponent<PieceInfo>().IsWhite = true;
+			} else {
+				myRend.material = black;
+				this.transform.rotation = Rotation;
+// 				this.GetComponent<PieceInfo> ().IsWhite = false;
+
+
+
+			}
+		}
+    }
+}
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Piece Information: 
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PieceInfo : MonoBehaviour {
+    //Storing all the info for each piece
+	public bool IsWhite;
+	public string Types;
+	public int[] location;
+	public bool selected;
+    public int timesMoved;
+
+	// Use this for initialization
+	void Start () {
+        }
+
+	
+	// Update is called once per frame
+	void Update () {
+		
+	}
+
+
+	public bool IsSelected () {
+
+
+		return selected;
+
+	}
+
+}
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Piece Tracker:
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PieceTracker : MonoBehaviour {
+	public static GameObject[,] pieces = new GameObject[8, 8];
+	public static int[] currentlyselectedpieceLocation = new int[2];
+    public static int[] lastMovedPieceLocation = new int [2];
+	// Use this for initialization	
+	void Start () {
+		
+	}
+	
+	// Update is called once per frame
+	void Update () {
+	//DEBUG CHECKING WHERE PIECES ARE @
+		//for (int i = 0; i < 8; i++) {
+			//for (int j = 0; j < 8; j++) {
+				//if (pieces[i,j] != null) Debug.Log("pieces[" + i + "," + j + "] is " + pieces[i,j].gameObject.name);
+		   	//}
+		//}
+	}
+}
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Promotion Menu:
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class PromotionMenu : MonoBehaviour {
+
+    public static GameObject buttonController;
+    static Button[] buttons = new Button[4];
+    static bool showingWhiteMenu;
+    static GameObject[] whiteImages = new GameObject[4];
+    static GameObject[] blackImages = new GameObject[4];
+    public static GameObject promotingPiece;
+	// Use this for initialization
+	void Start () {
+        buttonController = GameObject.Find("ButtonController");
+
+        for (int i = 0; i < 4; i++) {
+            buttons[i] = buttonController.transform.GetChild(i).gameObject.GetComponent<Button>();
+        }
+        for(int i = 4; i < 8; i++) {
+            whiteImages[i - 4] = buttonController.transform.GetChild(i).gameObject;
+        }
+        for (int i = 8; i < 12; i++) {
+            blackImages[i - 8] = buttonController.transform.GetChild(i).gameObject;
+        }
+        //For Loop no work so we have to run selection this way.
+        buttons[0].GetComponent<Button>().onClick.AddListener(delegate {Selection(0);});
+        buttons[1].GetComponent<Button>().onClick.AddListener(delegate {Selection(1);});
+        buttons[2].GetComponent<Button>().onClick.AddListener(delegate {Selection(2);});
+        buttons[3].GetComponent<Button>().onClick.AddListener(delegate {Selection(3);});
+    }
+
+
+	// Update is called once per frame
+	void Update () {
+
+	}
+	public static void ShowMenu(int[] promotingPieceLocation) {
+        promotingPiece = PieceTracker.pieces[promotingPieceLocation[0], promotingPieceLocation[1]];;
+        //Check whether the pawn promoting is white or black.
+        if (promotingPiece.GetComponent<PieceInfo>().IsWhite) {
+            showingWhiteMenu = true;
+        } else {
+            showingWhiteMenu = false;
+        }
+        //If black pawn show black images and if white pawn show white images.
+        GameObject[] showImages;
+        if (showingWhiteMenu) {
+            showImages = whiteImages;
+        } else {
+            showImages = blackImages;
+        }
+        //Enable the images and the buttons to show what the pawn can promote to
+        foreach (Button button in buttons) {
+            button.GetComponent<Image>().enabled = true;
+        }
+        foreach (GameObject image in showImages) {
+            image.GetComponent<Image>().enabled = true;
+        }
+    }
+
+    //Promoting a piece when selected
+    public void Selection(int currentPiece){
+		Debug.Log ("ClickedPiece number == " + currentPiece);
+        promotingPiece.GetComponent<PawnPromotion>().PromoteToPiece(currentPiece);
+    }
+}
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Spawn Piece:
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class SpawnPiece : MonoBehaviour {
+	public bool IsWhite = true;
+	public float liftY = 0.0f;
+	public GameObject piece;
+
+	// Use this for initialization
+	void Start () {
+        //Instantiating pieces and their locations
+		GameObject thatPiece = (GameObject)Instantiate (piece, new Vector3 (this.transform.position.x, this.transform.position.y + liftY, this.transform.position.z), piece.transform.rotation);
+		//thatPiece.GetComponentsInChildren<PieceColour>().SetColorToWhite(IsWhite);
+		thatPiece.GetComponent<PieceColour>().SetConnection(this.gameObject);
+		thatPiece.GetComponent<PieceInfo> ().location = this.GetComponent<MoveSelection>().location;
+        thatPiece.GetComponent<PieceInfo>().IsWhite = IsWhite;
+
+
+		// Add the relevent piece to PieceTracker.pieces
+		PieceTracker.pieces [this.GetComponent<MoveSelection>().location [0], this.GetComponent<MoveSelection>().location [1]] = thatPiece;
+
+        //Turn Off Colliders for black pieces
+        }
+
+	
+	// Update is called once per frame
+	void Update () {
+		
+	}
+
+
+	public bool GetOriginalPieceColour()
+	{
+		return IsWhite;
+	}
+
+
+}
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Turn Tracker:
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class TurnTracker : MonoBehaviour {
+public static bool isWhitesTurn = true;
+	// Use this for initialization
+	void Start () {
+
+	}
+	
+	// Update is called once per frame
+	void Update () {
+	}
+
+
+	public static void ChangeTurn() {
+        //Change the turn after a piece has moved, starting with white.
+        isWhitesTurn = !isWhitesTurn;
+        //Fliping between colliders for black and white
+        foreach (GameObject piece in PieceTracker.pieces){
+            if (piece != null) {
+                piece.GetComponent<BoxCollider>().enabled = !piece.GetComponent<BoxCollider>().enabled;
+                piece.GetComponent<CapsuleCollider>().enabled = !piece.GetComponent<CapsuleCollider>().enabled;
+            }
+        }
+    }
+}
